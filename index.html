@@ -61,8 +61,8 @@
         <div class="cells">
           <div class="field w2"><label for="docTitle">Document title</label><input id="docTitle" type="text" data-setting="title" maxlength="120" placeholder="ChatGPT Notes" autocomplete="off"></div>
           <div class="field w2"><label for="docAuthor">Author (optional)</label><input id="docAuthor" type="text" data-setting="author" maxlength="80" placeholder="Your name" autocomplete="name"></div>
-          <fieldset class="field"><legend>Page size</legend><div class="seg"><label><input type="radio" name="c-page" value="a4" data-setting="pageSize"><span>A4</span></label><label><input type="radio" name="c-page" value="letter" data-setting="pageSize"><span>Letter</span></label></div></fieldset>
-          <fieldset class="field"><legend>Font size</legend><div class="seg"><label><input type="radio" name="c-font" value="small" data-setting="fontSize"><span>S</span></label><label><input type="radio" name="c-font" value="medium" data-setting="fontSize"><span>M</span></label><label><input type="radio" name="c-font" value="large" data-setting="fontSize"><span>L</span></label></div></fieldset>
+          <div class="field" role="group" aria-labelledby="lgPage"><span class="lgd" id="lgPage">Page size</span><div class="seg"><label><input type="radio" name="c-page" value="a4" data-setting="pageSize"><span>A4</span></label><label><input type="radio" name="c-page" value="letter" data-setting="pageSize"><span>Letter</span></label></div></div>
+          <div class="field" role="group" aria-labelledby="lgFont"><span class="lgd" id="lgFont">Font size</span><div class="seg"><label><input type="radio" name="c-font" value="small" data-setting="fontSize"><span>S</span></label><label><input type="radio" name="c-font" value="medium" data-setting="fontSize"><span>M</span></label><label><input type="radio" name="c-font" value="large" data-setting="fontSize"><span>L</span></label></div></div>
           <div class="field w2"><label for="docTheme">Theme</label><select id="docTheme" data-setting="docTheme"><option value="clean">Clean</option><option value="study">Study Notes</option><option value="minimal">Minimal</option><option value="professional">Professional</option></select></div>
           <label class="check"><input type="checkbox" data-setting="pageNumbers"><span>Page numbers</span></label>
           <label class="check"><input type="checkbox" data-setting="date"><span>Date</span></label>
@@ -130,7 +130,7 @@
       </select>
     </div>
     <h3>Privacy</h3>
-    <p class="hint">Share links load through this site's server. Formatting happens in your browser.</p>
+    <p class="hint">Share links are read from ChatGPT's public page. Formatting happens in your browser.</p>
     <label class="check"><input type="checkbox" data-setting="rememberText"><span>Remember my pasted text on this device</span></label>
     <div class="dlg-actions">
       <button class="btn" id="resetBtn" type="button">Reset settings</button>
@@ -142,6 +142,7 @@
 
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 
+<script src="share-parser.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
