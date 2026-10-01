@@ -11,7 +11,7 @@ const MAX_CHARS = 300000;
 const state = { settings: { ...DEFAULTS }, source: '', pages: [], plain: '', generated: false, dirty: false, busy: false };
 
 /* ============ DOM elements ============ */
-const ids = ['chatInput', 'charCount', 'exampleBtn', 'demoBtn', 'pasteBtn', 'clearBtn', 'genBtn', 'themeBtn', 'settingsBtn', 'customizeCard', 'previewSection', 'emptyState', 'previewBody', 'statusChip', 'pager', 'pages', 'downloadBtn', 'shareBtn', 'copyBtn', 'printBtn', 'barPreview', 'barCustomize', 'barDownload', 'printRoot', 'pageRule', 'toasts', 'settingsDlg', 'resetBtn', 'clearDataBtn', 'doneBtn', 'closeBtn', 'metaTheme'];
+const ids = ['chatInput', 'charCount', 'linkInput', 'importBtn', 'altBox', 'custBox', 'demoBtn', 'pasteBtn', 'clearBtn', 'genBtn', 'themeBtn', 'settingsBtn', 'previewSection', 'emptyState', 'previewBody', 'statusChip', 'pager', 'pages', 'downloadBtn', 'shareBtn', 'copyBtn', 'printBtn', 'printRoot', 'pageRule', 'toasts', 'settingsDlg', 'resetBtn', 'clearDataBtn', 'doneBtn', 'closeBtn', 'metaTheme'];
 const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const iconUse = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
@@ -394,16 +394,16 @@ function persistText() {
 }
 function setInput(t) { els.chatInput.value = t; onInput(); }
 async function pasteFromClipboard() {
-  const fail = () => { toast('Clipboard unavailable. Long-press the box and choose Paste.', 'error'); els.chatInput.focus(); };
+  const fail = () => { toast('Clipboard unavailable. Long-press the link box and choose Paste.', 'error'); els.linkInput.focus(); };
   if (!navigator.clipboard || !navigator.clipboard.readText) return fail();
   try {
     const t = await navigator.clipboard.readText();
     if (!t.trim()) return toast('Your clipboard is empty.', 'error');
-    setInput(t); toast('Pasted');
+    els.linkInput.value = t.trim(); return importLink();
   } catch { fail(); }
 }
 function clearInput() {
-  setInput(''); state.generated = false; state.dirty = false; state.pages = []; state.source = '';
+  els.linkInput.value = ''; setInput(''); state.generated = false; state.dirty = false; state.pages = []; state.source = '';
   showDoc(false); toast('Cleared'); els.chatInput.focus();
 }
 async function copyText(t) {
@@ -412,6 +412,29 @@ async function copyText(t) {
     const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0';
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok;
   } catch { return false; }
+}
+
+/* ============ Import from a ChatGPT share link ============ */
+const SHARE_RE = /^https?:\/\/(?:www\.)?(?:chatgpt\.com|chat\.openai\.com)\/share\/(?:e\/)?([0-9a-f-]{20,64})/i;
+async function importLink() {
+  if (state.busy) return;
+  const m = els.linkInput.value.trim().match(SHARE_RE);
+  if (!m) { toast('Paste a ChatGPT share link. It looks like chatgpt.com/share/...', 'error', 4500); els.linkInput.focus(); return; }
+  const lab = els.importBtn.querySelector('span');
+  state.busy = true; els.importBtn.disabled = true; els.importBtn.classList.add('busy'); lab.textContent = 'Fetching chat...';
+  try {
+    const r = await fetch('/api/chat?id=' + encodeURIComponent(m[1]));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.text) throw new Error(d.error || 'failed');
+    if (d.title) { state.settings.title = d.title.slice(0, 120); syncControls(); }
+    setInput(d.text);
+  } catch (e) {
+    const msg = { not_found: 'Link not found. Check that sharing is still turned on for this chat.', blocked: 'ChatGPT blocked the request. Use "Paste the text instead" below.' }[e.message] || 'Could not load that chat. Use "Paste the text instead" below.';
+    toast(msg, 'error', 5500); els.altBox.open = true; return;
+  } finally {
+    state.busy = false; els.importBtn.disabled = false; els.importBtn.classList.remove('busy'); lab.textContent = 'Create PDF preview';
+  }
+  await generate();
 }
 
 /* ============ PDF / Print / Share ============ */
@@ -568,15 +591,13 @@ on(els.chatInput, 'keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'E
 on(els.pasteBtn, 'click', pasteFromClipboard);
 on(els.clearBtn, 'click', clearInput);
 on(els.genBtn, 'click', generate);
-on(els.exampleBtn, 'click', () => { setInput(EXAMPLE); toast('Example added. Tap Generate Preview.'); });
+on(els.importBtn, 'click', importLink);
+on(els.linkInput, 'keydown', e => { if (e.key === 'Enter') importLink(); });
 on(els.demoBtn, 'click', () => { setInput(DEMO); return generate(); });
 on(els.downloadBtn, 'click', printDoc);
-on(els.barDownload, 'click', printDoc);
 on(els.printBtn, 'click', printDoc);
 on(els.shareBtn, 'click', shareDoc);
 on(els.copyBtn, 'click', copyDoc);
-on(els.barPreview, 'click', () => (els.chatInput.value.trim() && (!state.generated || state.dirty)) ? generate() : scrollTo(els.previewSection));
-on(els.barCustomize, 'click', () => scrollTo(els.customizeCard));
 on(els.themeBtn, 'click', () => { state.settings.appearance = resolvedTheme() === 'dark' ? 'light' : 'dark'; applyTheme(true); syncControls(); saveSettings(); });
 on(els.settingsBtn, 'click', openSettings);
 on(els.closeBtn, 'click', closeSettings);
@@ -589,7 +610,7 @@ document.addEventListener('input', onSettingInput);
 document.addEventListener('change', onSettingInput);
 
 let scrollRaf = 0;
-addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; updatePager(); }); }, { passive: true });
+addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; updatePager(); }); }, { passive: true, capture: true });
 if (window.ResizeObserver) new ResizeObserver(fitPreview).observe(els.pages); else addEventListener('resize', fitPreview);
 addEventListener('error', () => toast('Something went wrong. Please reload the page.', 'error'));
 
@@ -599,5 +620,6 @@ applyTheme(false);
 syncControls();
 if (state.settings.rememberText) { const t = store.get(KEYS.text); if (typeof t === 'string') setInput(t); }
 onInput();
+if (innerWidth < 900) els.custBox.open = false;
 showDoc(false);
 })();
