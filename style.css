@@ -40,6 +40,7 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
 .alt{margin-top:16px;border:1px solid var(--border);border-radius:6px}
 .alt summary{padding:12px 14px;font-weight:600;font-size:.9rem;cursor:pointer}.alt[open] summary{border-bottom:1px solid var(--border)}
 .alt .in{padding:14px}
+.alt-t{font-weight:650;font-size:.9rem}.alt-t.sp{margin-top:20px}.alt .meta{margin:4px 0 10px}
 .row{display:flex;gap:10px}.row .btn:first-child{flex:1}
 .btn{min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:6px;background:var(--panel);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:620;cursor:pointer;line-height:1.2}
 .btn:hover{background:var(--raise);border-color:var(--muted)}

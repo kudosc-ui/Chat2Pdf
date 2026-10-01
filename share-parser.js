@@ -72,6 +72,12 @@
     for (let i = 1; i + 1 < loader.length && !conv; i += 2) {   // alternate layout: key, value pairs
       if (typeof loader[i] === 'string') conv = findConversation(at(i + 1));
     }
+    for (let i = 0; i < loader.length && !conv; i++) {          // last resort: any object that looks like a conversation
+      const raw = loader[i];
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const keys = Object.keys(raw).map(k => (/^_\d+$/.test(k) && typeof loader[+k.slice(1)] === 'string') ? loader[+k.slice(1)] : k);
+      if (keys.includes('mapping') && (keys.includes('linear_conversation') || keys.includes('current_node'))) conv = findConversation(at(i));
+    }
     return conv;
   }
 
@@ -144,7 +150,78 @@
     }
     const nd = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);   // older pages
     if (nd) { try { const conv = findConversation(JSON.parse(nd[1])); if (conv) return result(conv); } catch (e) { /* fall through */ } }
+    const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi; let m;
+    while ((m = re.exec(html))) {
+      const t = m[1].trim();
+      if ((t[0] === '{' || t[0] === '[') && /"mapping"/.test(t)) { try { const conv = findConversation(JSON.parse(t)); if (conv) return result(conv); } catch (e) { /* skip */ } }
+    }
     throw fail('parse');
+  }
+  const BLOCK_RE = /just a moment|cf-chl|cf_chl_opt|challenge-platform|enable javascript and cookies|attention required|verify you are human|captcha|access denied|unusual activity/i;
+  const looksBlocked = html => BLOCK_RE.test(String(html).slice(0, 60000));
+  const hasChatMarkers = html => /streamController|__NEXT_DATA__|data-message-author-role/.test(html);
+
+  /* ---------- browser only: read a page that was saved after it had rendered ---------- */
+  function domToMarkdown(root) {
+    const inline = n => Array.from(n.childNodes).map(node).join('');
+    const block = (s) => '\n\n' + s.trim() + '\n\n';
+    function list(n) {
+      const ord = n.tagName === 'OL'; let i = 0, out = '';
+      for (const li of Array.from(n.children)) {
+        if (li.tagName !== 'LI') continue;
+        i++;
+        const body = inline(li).trim().replace(/\n{2,}/g, '\n').replace(/\n/g, '\n   ');
+        out += (ord ? i + '. ' : '- ') + body + '\n';
+      }
+      return block(out);
+    }
+    function table(n) {
+      const rows = Array.from(n.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(c => inline(c).trim().replace(/\|/g, '/').replace(/\n+/g, ' ')));
+      if (!rows.length) return '';
+      const w = Math.max(...rows.map(r => r.length)), pad = r => Array.from({ length: w }, (_, k) => r[k] || '');
+      const line = r => '| ' + pad(r).join(' | ') + ' |';
+      return block([line(rows[0]), '|' + ' --- |'.repeat(w)].concat(rows.slice(1).map(line)).join('\n'));
+    }
+    function node(n) {
+      if (n.nodeType === 3) return n.nodeValue.replace(/\s+/g, ' ');
+      if (n.nodeType !== 1) return '';
+      const t = n.tagName;
+      if (/^(SCRIPT|STYLE|BUTTON|SVG|NOSCRIPT|IMG|PICTURE)$/.test(t)) return '';
+      if (t === 'BR') return '\n';
+      if (t === 'STRONG' || t === 'B') { const s = inline(n).trim(); return s ? '**' + s + '**' : ''; }
+      if (t === 'EM' || t === 'I') { const s = inline(n).trim(); return s ? '*' + s + '*' : ''; }
+      if (t === 'CODE') return n.closest('pre') ? n.textContent : '`' + n.textContent + '`';
+      if (/^H[1-6]$/.test(t)) return block('#'.repeat(+t[1]) + ' ' + inline(n).trim());
+      if (t === 'P') return block(inline(n));
+      if (t === 'UL' || t === 'OL') return list(n);
+      if (t === 'TABLE') return table(n);
+      if (t === 'HR') return '\n\n---\n\n';
+      if (t === 'BLOCKQUOTE') return block(inline(n).trim().split('\n').map(l => '> ' + l).join('\n'));
+      if (t === 'PRE') {
+        const code = n.querySelector('code'), lang = ((code && code.className.match(/language-([\w+#-]+)/)) || [])[1] || '';
+        return '\n\n```' + lang + '\n' + (code || n).textContent.replace(/\n+$/, '') + '\n```\n\n';
+      }
+      return /^(DIV|SECTION|ARTICLE|LI)$/.test(t) ? '\n' + inline(n) + '\n' : inline(n);
+    }
+    return inline(root).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function parseDom(html) {
+    if (typeof DOMParser === 'undefined') throw fail('parse');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const els = Array.from(doc.querySelectorAll('[data-message-author-role]')).filter(e => /^(user|assistant)$/.test(e.getAttribute('data-message-author-role')));
+    const turns = [];
+    for (const e of els) {
+      const role = e.getAttribute('data-message-author-role');
+      const body = role === 'user' ? (e.querySelector('.whitespace-pre-wrap') || e).textContent : domToMarkdown(e.querySelector('.markdown') || e);
+      const text = clean(body).trim();
+      if (text) turns.push({ role, text });
+    }
+    if (!turns.length) throw fail('parse');
+    const t = (doc.title || '').trim();
+    return { title: /^chatgpt$/i.test(t) ? '' : t, turns };
+  }
+  function parseAny(html) {
+    try { return parseHtml(html); } catch (e) { return parseDom(html); }
   }
   function parseJson(data) {
     const conv = findConversation(data);
@@ -159,13 +236,14 @@
     try { r = await fetch('https://chatgpt.com/share/' + id, { headers: HEADERS, redirect: 'follow' }); }
     catch (e) { throw fail('failed'); }
     if (r.status === 404) throw fail('not_found');
-    if (r.ok) { try { return parseHtml(await r.text()); } catch (e) { /* try the JSON endpoint below */ } }
+    let page = '';
+    if (r.ok) { page = await r.text(); try { return parseHtml(page); } catch (e) { /* try the JSON endpoint below */ } }
     try {
       const j = await fetch('https://chatgpt.com/backend-api/share/' + id, { headers: Object.assign({}, HEADERS, { accept: 'application/json' }) });
       if (j.status === 404) throw fail('not_found');
       if (j.ok) return parseJson(await j.json());
     } catch (e) { if (e.code === 'not_found') throw e; }
-    throw fail(r.ok ? 'parse' : 'blocked');
+    throw fail(r.ok && hasChatMarkers(page) && !looksBlocked(page) ? 'parse' : 'blocked');
   }
   async function handle(id) {
     if (!ID_RE.test(id)) return { status: 400, body: { error: 'bad_link' } };
@@ -178,5 +256,5 @@
     }
   }
 
-  return { ID_RE, parseHtml, parseJson, toText, fetchFromChatGPT, handle };
+  return { ID_RE, parseHtml, parseDom, parseAny, parseJson, toText, looksBlocked, hasChatMarkers, fetchFromChatGPT, handle };
 });

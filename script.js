@@ -11,7 +11,7 @@ const MAX_CHARS = 500000;
 const state = { settings: { ...DEFAULTS }, source: '', pages: [], plain: '', generated: false, dirty: false, busy: false, imported: null };
 
 /* ============ DOM elements ============ */
-const ids = ['chatInput', 'charCount', 'linkInput', 'importBtn', 'altBox', 'custBox', 'demoBtn', 'pasteBtn', 'clearBtn', 'genBtn', 'themeBtn', 'settingsBtn', 'previewSection', 'emptyState', 'previewBody', 'statusChip', 'pager', 'pages', 'downloadBtn', 'shareBtn', 'copyBtn', 'printBtn', 'printRoot', 'pageRule', 'toasts', 'settingsDlg', 'resetBtn', 'clearDataBtn', 'doneBtn', 'closeBtn', 'metaTheme'];
+const ids = ['chatInput', 'charCount', 'fileInput', 'uploadBtn', 'linkInput', 'importBtn', 'altBox', 'custBox', 'demoBtn', 'pasteBtn', 'clearBtn', 'genBtn', 'themeBtn', 'settingsBtn', 'previewSection', 'emptyState', 'previewBody', 'statusChip', 'pager', 'pages', 'downloadBtn', 'shareBtn', 'copyBtn', 'printBtn', 'printRoot', 'pageRule', 'toasts', 'settingsDlg', 'resetBtn', 'clearDataBtn', 'doneBtn', 'closeBtn', 'metaTheme'];
 const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const iconUse = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
@@ -345,8 +345,12 @@ function showDoc(scroll) {
 /* ============ Generate ============ */
 async function generate() {
   if (state.busy) return false;
-  const text = els.chatInput.value;
+  let text = els.chatInput.value;
   if (!text.trim()) { toast('Please paste a conversation first.', 'error'); els.chatInput.focus(); return false; }
+  if (window.ShareParser && looksLikeHtml(text)) {
+    try { applyImported(ShareParser.parseAny(text)); text = els.chatInput.value; }
+    catch (e) { toast('No chat found in that page source. Copy the chat text from the page instead.', 'error', 5500); return false; }
+  }
   if (text.length > MAX_CHARS) { toast(`That is too long. Keep it under ${MAX_CHARS.toLocaleString()} characters.`, 'error'); return false; }
   state.busy = true; els.genBtn.disabled = true; els.genBtn.classList.add('busy');
   els.genBtn.querySelector('span').textContent = 'Generating...';
@@ -416,40 +420,60 @@ async function copyText(t) {
   } catch { return false; }
 }
 
-/* ============ Import from a ChatGPT share link ============ */
+/* ============ Import: share link, saved page, page source ============ */
 const SHARE_RE = /^https?:\/\/(?:www\.)?(?:chatgpt\.com|chat\.openai\.com)\/share\/(?:e\/)?([0-9a-f-]{20,64})/i;
 const PROXIES = [
   u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
   u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
   u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
 ];
+const looksLikeHtml = t => /^\s*(<!doctype html|<html[\s>])/i.test(t.slice(0, 400)) || t.includes('streamController.enqueue(') || /<script[\s>][\s\S]{0,200000}__NEXT_DATA__/.test(t.slice(0, 300000)) || /data-message-author-role=/.test(t.slice(0, 600000));
+const turnsToText = turns => turns.map(t => (t.role === 'user' ? 'User' : 'ChatGPT') + ':\n' + t.text).join('\n\n');
+function applyImported(d) {
+  const text = turnsToText(d.turns);
+  if (d.title) { state.settings.title = d.title.slice(0, 120); syncControls(); }
+  state.imported = { text, turns: d.turns.map(t => ({ role: t.role, lines: t.text.split('\n') })) };
+  setInput(text);
+}
 async function timed(url, ms) {
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
   try { return await fetch(url, { signal: c.signal }); } finally { clearTimeout(t); }
 }
 /* 1) this site's own server function, 2) public CORS relays (works on plain static hosting too). */
 async function loadShare(id) {
+  let serverCode = '';
   try {
     const r = await timed('/api/chat?id=' + encodeURIComponent(id), 25000);
     if ((r.headers.get('content-type') || '').includes('json')) {
       const d = await r.json();
       if (r.ok && d.turns && d.turns.length) return d;
       if (d.error === 'not_found') throw new Error('not_found');
+      serverCode = d.error || '';
     }
   } catch (e) { if (e.message === 'not_found') throw e; }
   if (!window.ShareParser) throw new Error('failed');
-  const target = 'https://chatgpt.com/share/' + id; let sawPage = false;
+  const target = 'https://chatgpt.com/share/' + id; let blocked = false, parse = false, reached = false;
   for (const mk of PROXIES) {
     try {
       const r = await timed(mk(target), 15000);
-      if (!r.ok) continue;
+      reached = true;
       const html = await r.text();
-      if (!/streamController|__NEXT_DATA__/.test(html)) { sawPage = sawPage || html.length > 2000; continue; }
-      try { const res = ShareParser.parseHtml(html); return { title: res.title, turns: res.turns }; } catch (e) { sawPage = true; }
+      if (r.ok && ShareParser.hasChatMarkers(html) && !ShareParser.looksBlocked(html)) {
+        try { return ShareParser.parseAny(html); } catch (e) { parse = true; continue; }
+      }
+      blocked = true;
     } catch (e) { /* try the next relay */ }
   }
-  throw new Error(sawPage ? 'parse' : 'failed');
+  if (parse) throw new Error('parse');
+  if (blocked) throw new Error('blocked');
+  throw new Error(serverCode === 'blocked' || serverCode === 'parse' ? serverCode : (reached ? 'blocked' : 'failed'));
 }
+const FAIL_MSG = {
+  not_found: 'Chat not found. Check that the share link still works and sharing is on.',
+  parse: 'The page loaded but its chat could not be read. Upload the saved page or paste the text below.',
+  blocked: 'ChatGPT blocked the automatic fetch. Upload the saved page or paste the text below.',
+  failed: 'Could not reach ChatGPT from here. Upload the saved page or paste the text below.'
+};
 async function importLink() {
   if (state.busy) return;
   const m = els.linkInput.value.trim().match(SHARE_RE);
@@ -457,20 +481,24 @@ async function importLink() {
   const lab = els.importBtn.querySelector('span');
   state.busy = true; els.importBtn.disabled = true; els.importBtn.classList.add('busy'); lab.textContent = 'Fetching chat...';
   try {
-    const d = await loadShare(m[1]);
-    const text = d.turns.map(t => (t.role === 'user' ? 'User' : 'ChatGPT') + ':\n' + t.text).join('\n\n');
-    if (d.title) { state.settings.title = d.title.slice(0, 120); syncControls(); }
-    state.imported = { text, turns: d.turns.map(t => ({ role: t.role, lines: t.text.split('\n') })) };
-    setInput(text);
+    applyImported(await loadShare(m[1]));
   } catch (e) {
-    const msg = {
-      not_found: 'Chat not found. Check that the share link still works and sharing is on.',
-      parse: 'Loaded the page but could not read the chat. Use "Paste the text instead" below.'
-    }[e.message] || 'Could not reach that chat from here. Use "Paste the text instead" below.';
-    toast(msg, 'error', 6000); els.altBox.open = true; return;
+    toast(FAIL_MSG[e.message] || FAIL_MSG.failed, 'error', 7000); els.altBox.open = true; return;
   } finally {
     state.busy = false; els.importBtn.disabled = false; els.importBtn.classList.remove('busy'); lab.textContent = 'Create PDF preview';
   }
+  await generate();
+}
+async function importFile(file) {
+  if (state.busy || !file) return;
+  els.altBox.open = true;
+  if (/\.(mhtml?|mht)$/i.test(file.name)) return toast('Save the page as "Webpage, HTML only" and upload that file.', 'error', 5500);
+  if (file.size > 40e6) return toast('That file is too big.', 'error');
+  let text;
+  try { text = await file.text(); } catch (e) { return toast('Could not read that file.', 'error'); }
+  if (!looksLikeHtml(text)) { state.imported = null; setInput(text); return generate(); }
+  try { applyImported(ShareParser.parseAny(text)); }
+  catch (e) { return toast('No chat found in that file. Upload the page saved from the ChatGPT share link.', 'error', 6000); }
   await generate();
 }
 
@@ -629,6 +657,10 @@ on(els.pasteBtn, 'click', pasteFromClipboard);
 on(els.clearBtn, 'click', clearInput);
 on(els.genBtn, 'click', generate);
 on(els.importBtn, 'click', importLink);
+on(els.uploadBtn, 'click', () => els.fileInput.click());
+on(els.fileInput, 'change', async () => { const f = els.fileInput.files[0]; els.fileInput.value = ''; await importFile(f); });
+addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault(); });
+addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) { e.preventDefault(); safe(importFile)(f); } });
 on(els.linkInput, 'keydown', e => { if (e.key === 'Enter') importLink(); });
 on(els.demoBtn, 'click', () => { setInput(DEMO); return generate(); });
 on(els.downloadBtn, 'click', printDoc);

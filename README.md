@@ -1,10 +1,14 @@
 # Chat2PDF
 
-Paste a ChatGPT share link (chatgpt.com/share/...) and get a clean, paginated PDF.
+Turn a ChatGPT conversation into a clean, paginated PDF.
 
-## How the link is loaded
-1. `/api/chat` (server function, best). Included for Vercel (`api/chat.js`) and Netlify (`netlify/functions/chat.js`).
-2. If there is no server function (GitHub Pages, plain hosting, opening index.html), the browser tries public CORS relays.
-3. If both fail, the "Paste the text instead" box opens.
+## Ways to load a chat
+1. **Share link** (chatgpt.com/share/...). Loaded through `/api/chat` (Vercel: `api/chat.js`, Netlify: `netlify/functions/chat.js`),
+   or through public CORS relays when there is no server function.
+2. **Upload saved page**. Open the share link, press Ctrl+S, choose "Webpage, HTML only", upload the file (or drop it on the page).
+3. **Paste** the chat text, or the page source (View page source, select all, copy).
 
-Deploy the whole folder to Vercel or Netlify for the most reliable result.
+ChatGPT sometimes blocks automatic fetching (bot check). Options 2 and 3 always work because they never contact ChatGPT.
+
+## Deploy
+Upload the whole folder to Vercel or Netlify. No build step or settings needed.
