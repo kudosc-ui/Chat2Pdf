@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1f" id="metaTheme">
+<meta name="description" content="Chat2PDF turns copied ChatGPT conversations into clean, paginated PDF notes. Everything runs in your browser.">
+<title>Chat2PDF - Turn your ChatGPT chats into beautiful notes</title>
+<link rel="stylesheet" href="style.css">
+<style id="pageRule"></style>
+</head>
+<body>
+
+<!-- Inline SVG icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#top" aria-label="Chat2PDF home">
+        <span class="logo" aria-hidden="true"><svg class="i"><use href="#i-file"/></svg></span>
+        <span class="brand-name">Chat2PDF</span>
+      </a>
+      <div class="top-actions">
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle light and dark theme"><svg class="i"><use href="#i-contrast"/></svg></button>
+        <button class="icon-btn" id="settingsBtn" type="button" aria-label="Open settings" aria-haspopup="dialog"><svg class="i"><use href="#i-sliders"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="top">
+    <section class="hero">
+      <h1>Turn chats into clean PDFs.</h1>
+      <p>Paste your ChatGPT conversation and transform it into beautifully formatted notes.</p>
+    </section>
+
+    <!-- Input -->
+    <section class="card" id="inputCard" aria-labelledby="inputLabel">
+      <div class="card-head">
+        <label id="inputLabel" for="chatInput">Your conversation</label>
+        <div class="chips">
+          <button class="chip-btn" id="exampleBtn" type="button">Try Example</button>
+          <button class="chip-btn" id="demoBtn" type="button">Load Demo</button>
+        </div>
+      </div>
+      <textarea id="chatInput" placeholder="Paste your ChatGPT conversation here..." spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="charLine"></textarea>
+      <p class="meta" id="charLine">Characters: <span id="charCount">0</span></p>
+      <div class="row">
+        <button class="btn" id="pasteBtn" type="button"><svg class="i"><use href="#i-clipboard"/></svg>Paste</button>
+        <button class="btn" id="clearBtn" type="button"><svg class="i"><use href="#i-trash"/></svg>Clear</button>
+      </div>
+      <button class="btn primary block" id="genBtn" type="button"><svg class="i"><use href="#i-eye"/></svg><span>Generate Preview</span></button>
+    </section>
+
+    <!-- Customize -->
+    <section class="card" id="customizeCard" aria-labelledby="custTitle">
+      <h2 id="custTitle">Customize PDF</h2>
+      <div class="grid2">
+        <div class="field"><label for="docTitle">Document title</label><input id="docTitle" type="text" data-setting="title" maxlength="120" placeholder="ChatGPT Notes" autocomplete="off"></div>
+        <div class="field"><label for="docAuthor">Author (optional)</label><input id="docAuthor" type="text" data-setting="author" maxlength="80" placeholder="Your name" autocomplete="name"></div>
+      </div>
+      <div class="grid2">
+        <fieldset class="field"><legend>Page size</legend>
+          <div class="seg">
+            <label><input type="radio" name="c-page" value="a4" data-setting="pageSize"><span>A4</span></label>
+            <label><input type="radio" name="c-page" value="letter" data-setting="pageSize"><span>Letter</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="field"><legend>Font size</legend>
+          <div class="seg">
+            <label><input type="radio" name="c-font" value="small" data-setting="fontSize"><span>Small</span></label>
+            <label><input type="radio" name="c-font" value="medium" data-setting="fontSize"><span>Medium</span></label>
+            <label><input type="radio" name="c-font" value="large" data-setting="fontSize"><span>Large</span></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="field"><label for="docTheme">Theme</label>
+        <select id="docTheme" data-setting="docTheme">
+          <option value="clean">Clean</option><option value="study">Study Notes</option><option value="minimal">Minimal</option><option value="professional">Professional</option>
+        </select>
+      </div>
+      <fieldset class="field"><legend>Include</legend>
+        <div class="checks">
+          <label class="check"><input type="checkbox" data-setting="pageNumbers"><span>Page numbers</span></label>
+          <label class="check"><input type="checkbox" data-setting="date"><span>Date</span></label>
+          <label class="check"><input type="checkbox" data-setting="toc"><span>Table of contents</span></label>
+          <label class="check"><input type="checkbox" data-setting="cover"><span>Cover page</span></label>
+          <label class="check"><input type="checkbox" data-setting="labels"><span>Chat labels</span></label>
+        </div>
+      </fieldset>
+    </section>
+
+    <!-- Preview -->
+    <section class="pv" id="previewSection" aria-labelledby="pvTitle">
+      <div class="pv-head">
+        <h2 id="pvTitle">Preview</h2>
+        <span class="status" id="statusChip" hidden></span>
+      </div>
+      <div class="empty" id="emptyState">
+        <span class="empty-ic" aria-hidden="true"><svg class="i"><use href="#i-file"/></svg></span>
+        <h3>Your document will appear here</h3>
+        <p>Paste a ChatGPT conversation to get started.</p>
+      </div>
+      <div id="previewBody" hidden>
+        <div class="pager" id="pager" aria-live="polite">Page 1 of 1</div>
+        <div class="pages" id="pages"></div>
+      </div>
+      <div class="card actions">
+        <button class="btn primary block" id="downloadBtn" type="button"><svg class="i"><use href="#i-download"/></svg>Download PDF</button>
+        <div class="grid3">
+          <button class="btn" id="shareBtn" type="button"><svg class="i"><use href="#i-share"/></svg>Share PDF</button>
+          <button class="btn" id="copyBtn" type="button"><svg class="i"><use href="#i-copy"/></svg>Copy document</button>
+          <button class="btn" id="printBtn" type="button"><svg class="i"><use href="#i-print"/></svg>Print</button>
+        </div>
+        <p class="hint">Tap Download PDF, then choose "Save as PDF" in the print dialog.</p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <p>Chat2PDF. Turn your ChatGPT chats into beautiful notes.</p>
+      <p>Your pasted text is processed locally in this version.</p>
+    </footer>
+  </main>
+
+  <nav class="bar" aria-label="Quick actions">
+    <div class="bar-in">
+      <button class="bar-btn" id="barPreview" type="button"><svg class="i"><use href="#i-eye"/></svg><span>Preview</span></button>
+      <button class="bar-btn" id="barCustomize" type="button"><svg class="i"><use href="#i-edit"/></svg><span>Customize</span></button>
+      <button class="bar-btn primary" id="barDownload" type="button"><svg class="i"><use href="#i-download"/></svg><span>Download PDF</span></button>
+    </div>
+  </nav>
+</div>
+
+<div id="printRoot" aria-hidden="true"></div>
+
+<!-- Settings -->
+<dialog id="settingsDlg" aria-labelledby="setTitle">
+  <div class="dlg-head">
+    <h2 id="setTitle">Settings</h2>
+    <button class="icon-btn" id="closeBtn" type="button" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <fieldset class="field"><legend>Appearance</legend>
+      <div class="seg">
+        <label><input type="radio" name="s-app" value="light" data-setting="appearance"><span>Light</span></label>
+        <label><input type="radio" name="s-app" value="dark" data-setting="appearance"><span>Dark</span></label>
+        <label><input type="radio" name="s-app" value="system" data-setting="appearance"><span>System</span></label>
+      </div>
+    </fieldset>
+    <h3>Document</h3>
+    <fieldset class="field"><legend>Default page size</legend>
+      <div class="seg">
+        <label><input type="radio" name="s-page" value="a4" data-setting="pageSize"><span>A4</span></label>
+        <label><input type="radio" name="s-page" value="letter" data-setting="pageSize"><span>Letter</span></label>
+      </div>
+    </fieldset>
+    <fieldset class="field"><legend>Default font size</legend>
+      <div class="seg">
+        <label><input type="radio" name="s-font" value="small" data-setting="fontSize"><span>Small</span></label>
+        <label><input type="radio" name="s-font" value="medium" data-setting="fontSize"><span>Medium</span></label>
+        <label><input type="radio" name="s-font" value="large" data-setting="fontSize"><span>Large</span></label>
+      </div>
+    </fieldset>
+    <div class="field"><label for="setTheme">Default theme</label>
+      <select id="setTheme" data-setting="docTheme">
+        <option value="clean">Clean</option><option value="study">Study Notes</option><option value="minimal">Minimal</option><option value="professional">Professional</option>
+      </select>
+    </div>
+    <h3>Privacy</h3>
+    <p class="hint">Your pasted text is processed locally in this version.</p>
+    <label class="check"><input type="checkbox" data-setting="rememberText"><span>Remember my pasted text on this device</span></label>
+    <div class="dlg-actions">
+      <button class="btn" id="resetBtn" type="button">Reset settings</button>
+      <button class="btn danger" id="clearDataBtn" type="button">Clear saved data</button>
+      <button class="btn primary" id="doneBtn" type="button">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
